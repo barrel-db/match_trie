@@ -1,0 +1,15 @@
+{application, match_trie,
+ [{description, "ETS trie to match keys"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {applications,
+   [kernel,
+    stdlib
+   ]},
+  {env,[]},
+  {modules, []},
+
+  {maintainers, ["Benoit Chesneau"]},
+  {licenses, ["MPL2"]},
+  {links, [{"Gitlab", "https://gitlab.com/barrel-db/match_trie"}]}
+ ]}.
