@@ -1,6 +1,6 @@
 %% Copyright (c) 2016 Contributors as noted in the AUTHORS file
 %%
-%% This file is part openkvs, The Barrel KeyValue database engine in Erlang
+%% This file is part match_trie
 %%
 %% This Source Code Form is subject to the terms of the Mozilla Public
 %% License, v. 2.0. If a copy of the MPL was not distributed with this
