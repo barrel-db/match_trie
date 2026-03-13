@@ -1,7 +1,7 @@
 # match_trie
 
 [![CI](https://github.com/barrel-db/match_trie/actions/workflows/ci.yml/badge.svg)](https://github.com/barrel-db/match_trie/actions/workflows/ci.yml)
-[![Hex.pm](https://img.shields.io/hexpm/v/match_trie.svg)](https://hex.pm/packages/match_trie)
+[![Hex.pm](https://img.shields.io/hexpm/v/match_trie.svg)](https://hex.pm/packages/match_trie/1.0.0)
 [![Hex Docs](https://img.shields.io/badge/hex-docs-blue.svg)](https://hexdocs.pm/match_trie)
 
 An Erlang trie (prefix tree) implementation using ETS for efficient MQTT-style topic matching with wildcard support.
