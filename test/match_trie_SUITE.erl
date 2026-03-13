@@ -1,4 +1,4 @@
-%% Copyright (c) 2016 Contributors as noted in the AUTHORS file
+%% Copyright (c) 2016-2026 Benoit Chesneau
 %%
 %% This file is part match_trie
 %%
