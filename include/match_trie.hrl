@@ -4,7 +4,7 @@
   node_id         :: trie_node_id(),
   edge_count = 0  :: non_neg_integer(),
   topic           :: binary() | undefined,
-  flags           :: [retained | static]
+  flags           :: [retained | static] | undefined
 }).
 
 -record(trie_edge, {

@@ -15,7 +15,9 @@
 -define(TRIE, match_trie).
 
 all() ->
-  [t_insert, t_match, t_match2, t_match3, t_delete, t_delete2, t_delete3].
+  [t_insert, t_match, t_match2, t_match3, t_delete, t_delete2, t_delete3,
+   t_new_access, t_new_badarg, t_insert_badarg,
+   t_validate, t_is_wildcard, t_is_match].
 
 init_per_suite(Config) ->
   Config.
@@ -113,3 +115,99 @@ t_delete3(_Config) ->
   ?TRIE:delete(Trie, <<"db/+/unknown">>),
   {[], []} = {?TRIE:lookup(Trie, <<"db">>), ?TRIE:lookup(Trie, <<"db/+">>)},
   ?TRIE:delete(Trie).
+
+t_new_access(_Config) ->
+  Trie1 = ?TRIE:new(private),
+  ?TRIE:insert(Trie1, <<"test">>),
+  [<<"test">>] = ?TRIE:match(Trie1, <<"test">>),
+  ?TRIE:delete(Trie1),
+  Trie2 = ?TRIE:new(public),
+  ?TRIE:insert(Trie2, <<"test">>),
+  [<<"test">>] = ?TRIE:match(Trie2, <<"test">>),
+  ?TRIE:delete(Trie2).
+
+t_new_badarg(_Config) ->
+  try
+    ?TRIE:new(invalid),
+    error(should_fail)
+  catch
+    error:badarg -> ok
+  end.
+
+t_insert_badarg(_Config) ->
+  Trie = ?TRIE:new(),
+  try
+    ?TRIE:insert(Trie, not_binary),
+    error(should_fail)
+  catch
+    error:badarg -> ok
+  end,
+  ?TRIE:delete(Trie).
+
+t_validate(_Config) ->
+  %% Empty topic is invalid
+  false = ?TRIE:validate({name, <<>>}),
+  false = ?TRIE:validate({filter, <<>>}),
+  %% Topic too long
+  LongTopic = binary:copy(<<"a">>, 4097),
+  false = ?TRIE:validate({name, LongTopic}),
+  false = ?TRIE:validate({filter, LongTopic}),
+  %% Valid filter with wildcards
+  true = ?TRIE:validate({filter, <<"a/+/b">>}),
+  true = ?TRIE:validate({filter, <<"a/#">>}),
+  true = ?TRIE:validate({filter, <<"#">>}),
+  true = ?TRIE:validate({filter, <<"+/+">>}),
+  %% Valid name (no wildcards)
+  true = ?TRIE:validate({name, <<"a/b/c">>}),
+  true = ?TRIE:validate({name, <<"test">>}),
+  %% Name with wildcard is invalid
+  false = ?TRIE:validate({name, <<"a/+/b">>}),
+  false = ?TRIE:validate({name, <<"a/#">>}),
+  %% Invalid: # not at end
+  false = ?TRIE:validate({filter, <<"a/#/b">>}),
+  %% Invalid: contains # or + in word
+  false = ?TRIE:validate({filter, <<"a/b#c">>}),
+  false = ?TRIE:validate({filter, <<"a/b+c">>}),
+  %% Invalid: contains null character
+  false = ?TRIE:validate({filter, <<"a/b", 0, "c">>}),
+  %% Valid empty segments
+  true = ?TRIE:validate({filter, <<"a//b">>}),
+  true = ?TRIE:validate({name, <<"a//b">>}).
+
+t_is_wildcard(_Config) ->
+  %% Binary input
+  true = ?TRIE:is_wildcard(<<"a/+/b">>),
+  true = ?TRIE:is_wildcard(<<"a/#">>),
+  true = ?TRIE:is_wildcard(<<"#">>),
+  true = ?TRIE:is_wildcard(<<"+/a">>),
+  false = ?TRIE:is_wildcard(<<"a/b/c">>),
+  false = ?TRIE:is_wildcard(<<"test">>),
+  %% List input (words)
+  true = ?TRIE:is_wildcard([<<"a">>, '+', <<"b">>]),
+  true = ?TRIE:is_wildcard(['#']),
+  false = ?TRIE:is_wildcard([<<"a">>, <<"b">>]),
+  false = ?TRIE:is_wildcard([]).
+
+t_is_match(_Config) ->
+  %% Exact match
+  true = ?TRIE:is_match(<<"a/b/c">>, <<"a/b/c">>),
+  false = ?TRIE:is_match(<<"a/b/c">>, <<"a/b/d">>),
+  %% Single-level wildcard
+  true = ?TRIE:is_match(<<"a/b/c">>, <<"a/+/c">>),
+  true = ?TRIE:is_match(<<"a/b/c">>, <<"+/+/+">>),
+  false = ?TRIE:is_match(<<"a/b">>, <<"a/+/c">>),
+  %% Multi-level wildcard
+  true = ?TRIE:is_match(<<"a/b/c">>, <<"a/#">>),
+  true = ?TRIE:is_match(<<"a/b/c/d">>, <<"a/#">>),
+  true = ?TRIE:is_match(<<"a">>, <<"#">>),
+  %% $ prefix handling (system topics)
+  false = ?TRIE:is_match(<<"$SYS/broker">>, <<"+/broker">>),
+  false = ?TRIE:is_match(<<"$SYS/broker">>, <<"#">>),
+  true = ?TRIE:is_match(<<"$SYS/broker">>, <<"$SYS/+">>),
+  true = ?TRIE:is_match(<<"$SYS/broker">>, <<"$SYS/#">>),
+  %% Length mismatch
+  false = ?TRIE:is_match(<<"a/b/c">>, <<"a/b">>),
+  false = ?TRIE:is_match(<<"a/b">>, <<"a/b/c">>),
+  %% Empty segments
+  true = ?TRIE:is_match(<<"a//b">>, <<"a//b">>),
+  true = ?TRIE:is_match(<<"a//b">>, <<"a/+/b">>).

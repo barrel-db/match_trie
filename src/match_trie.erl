@@ -160,7 +160,7 @@ is_match(Name, Filter) when is_binary(Name) and is_binary(Filter) ->
 is_match([], []) ->
   true;
 is_match([H|T1], [H|T2]) ->
-  match(T1, T2);
+  is_match(T1, T2);
 is_match([<<$$, _/binary>>|_], ['+'|_]) ->
   false;
 is_match([_H|T1], ['+'|T2]) ->
