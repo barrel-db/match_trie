@@ -107,6 +107,43 @@ Trie2 = match_trie:new(protected),
 Trie3 = match_trie:new(public).
 ```
 
+## Benchmark
+
+Run the benchmark:
+
+```bash
+rebar3 as bench compile
+erl -pa _build/bench/lib/match_trie/ebin -pa _build/bench/lib/match_trie/bench \
+    -noshell -eval "match_trie_bench:run(100000), halt()."
+```
+
+Example output (Apple MacBook Pro M4 Pro, 48GB RAM, March 2026):
+
+```
+=== match_trie benchmark ===
+Iterations: 100000
+
+--- Insert ---
+  Total: 8.61 ms
+  Per op: 0.09 us
+  Ops/sec: 11609009
+
+--- Match (exact topics) ---
+  Total: 112.88 ms
+  Per op: 1.13 us
+  Ops/sec: 885928
+
+--- Match (with wildcards) ---
+  Total: 25.30 ms
+  Per op: 2.53 us
+  Ops/sec: 395241
+
+--- Delete ---
+  Total: 8.33 ms
+  Per op: 0.08 us
+  Ops/sec: 12004802
+```
+
 ## License
 
 This project is licensed under the Mozilla Public License 2.0. See [LICENSE](LICENSE) for details.
