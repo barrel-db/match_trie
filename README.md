@@ -6,6 +6,8 @@
 
 An Erlang trie (prefix tree) implementation using ETS for efficient MQTT-style topic matching with wildcard support.
 
+Used in [barrel_docdb](https://github.com/barrel-db/barrel_docdb).
+
 ## Features
 
 - Fast topic matching using ETS ordered sets
