@@ -1,15 +1,17 @@
 {application, match_trie,
- [{description, "ETS trie to match keys"},
+ [{description, "MQTT-style topic matching trie using ETS"},
   {vsn, "0.1.0"},
   {registered, []},
   {applications,
    [kernel,
     stdlib
    ]},
-  {env,[]},
+  {env, []},
   {modules, []},
 
+  %% hex.pm metadata
   {maintainers, ["Benoit Chesneau"]},
-  {licenses, ["MPL2"]},
-  {links, [{"Gitlab", "https://gitlab.com/barrel-db/match_trie"}]}
+  {licenses, ["MPL-2.0"]},
+  {links, [{"Github", "https://github.com/barrel-db/match_trie"}]},
+  {files, ["src", "include", "rebar.config", "README.md", "CHANGELOG.md", "LICENSE", "CONTRIBUTING.md"]}
  ]}.

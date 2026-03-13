@@ -6,6 +6,60 @@
 %% License, v. 2.0. If a copy of the MPL was not distributed with this
 %% file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+%% @doc A trie data structure for matching MQTT-style topic patterns.
+%%
+%% This module implements a trie (prefix tree) using ETS tables for efficient
+%% storage and lookup of topic patterns with wildcard support. It is designed
+%% for use cases like MQTT topic matching, routing keys, or any hierarchical
+%% path matching system.
+%%
+%% == Topic Format ==
+%%
+%% Topics are binary strings with segments separated by `/'. For example:
+%% `<<"sensors/temperature/room1">>'.
+%%
+%% == Wildcards ==
+%%
+%% Two wildcards are supported:
+%%
+%% `+' (single-level): Matches exactly one topic segment.
+%% For example, "sensors/+/room1" matches "sensors/temperature/room1"
+%% but not "sensors/temperature/floor1/room1".
+%%
+%% `#' (multi-level): Matches zero or more topic segments.
+%% Must be the last segment. For example, "sensors/#" matches
+%% "sensors", "sensors/temperature", and "sensors/temperature/room1".
+%%
+%% == System Topics ==
+%%
+%% Topics starting with `$' (like `<<"$SYS/...">>' in MQTT) are treated specially.
+%% They are not matched by `+' or `#' wildcards at the root level.
+%%
+%% == Quick Start ==
+%%
+%% ```
+%% %% Create a new trie
+%% Trie = match_trie:new(),
+%%
+%% %% Insert topic patterns
+%% ok = match_trie:insert(Trie, <<"sensors/+/temperature">>),
+%% ok = match_trie:insert(Trie, <<"sensors/#">>),
+%%
+%% %% Find matching patterns
+%% Matches = match_trie:match(Trie, <<"sensors/room1/temperature">>),
+%% %% Returns: [<<"sensors/+/temperature">>, <<"sensors/#">>]
+%%
+%% %% Clean up
+%% ok = match_trie:delete(Trie).
+%% '''
+%%
+%% == Concurrency ==
+%%
+%% The trie uses ETS tables internally. By default, tables are created with
+%% `protected' access, allowing concurrent reads from other processes.
+%% Use {@link new/1} to specify different access modes.
+%%
+%% @end
 -module(match_trie).
 
 -author("benoitc").
@@ -21,21 +75,51 @@
 
 
 -type topic() :: binary().
--type word()   :: '' | '+' | '#' | binary().
+%% A topic is a binary string with segments separated by `/'.
+%% Example: `<<"sensors/temperature/room1">>'.
 
--type words()  :: list(word()).
+-type word() :: '' | '+' | '#' | binary().
+%% A single segment of a topic. Empty binary becomes `''',
+%% `<<"+">> becomes `+', and `<<"#">> becomes `#'.
+
+-type words() :: list(word()).
+%% A topic split into its constituent segments.
 
 -opaque trie() :: #trie_tree{}.
--export_type([trie/0]).
+%% An opaque reference to the trie data structure.
+%% Created by {@link new/0} or {@link new/1}.
+
+-export_type([trie/0, topic/0]).
 
 -define(MAX_TOPIC_LEN, 4096).
 
-%% @doc create a new TRIE relative to the current process. The trie can be
-%% shared between reader processes.
+%% @doc Create a new trie with protected access.
+%%
+%% Equivalent to `new(protected)'. The trie can be read by other processes
+%% but only written by the creating process.
+%%
+%% @see new/1
 -spec new() -> trie().
 new() -> new(protected).
 
--spec new(protected | private) -> trie().
+%% @doc Create a new trie with the specified ETS access mode.
+%%
+%% Access modes:
+%%
+%% `private' - Only the creating process can read or write.
+%%
+%% `protected' - Any process can read, only creator can write.
+%%
+%% `public' - Any process can read or write.
+%%
+%% Example:
+%% ```
+%% Trie = match_trie:new(public).
+%% '''
+%%
+%% Raises `error:badarg' if Access is not a valid access mode.
+-spec new(Access) -> trie() when
+  Access :: private | protected | public.
 new(Access) ->
   case lists:member(Access, [protected, private, public]) of
     true ->
@@ -48,8 +132,21 @@ new(Access) ->
       erlang:error(badarg)
   end.
 
-%% @doc insert a new topic to the tie
--spec insert(trie(), binary()) -> ok.
+%% @doc Insert a topic pattern into the trie.
+%%
+%% The topic can include wildcards (`+' and `#'). Inserting the same
+%% topic multiple times has no effect.
+%%
+%% Example:
+%% ```
+%% ok = match_trie:insert(Trie, <<"sensors/+/temperature">>),
+%% ok = match_trie:insert(Trie, <<"sensors/#">>).
+%% '''
+%%
+%% Raises `error:badarg' if Topic is not a binary.
+-spec insert(Trie, Topic) -> ok when
+  Trie :: trie(),
+  Topic :: topic().
 insert(T, Topic) when is_binary(Topic) ->
   NT = T#trie_tree.ntab,
   case ets:lookup(NT, Topic) of
@@ -67,22 +164,53 @@ insert(T, Topic) when is_binary(Topic) ->
 insert(_, _) ->
   erlang:error(badarg).
 
-%% @doc %% @doc Find trie nodes that match topic
--spec match(trie(), binary()) -> [binary()].
+%% @doc Find all topic patterns that match the given topic.
+%%
+%% Returns a list of all previously inserted patterns that match the topic.
+%% The topic itself should not contain wildcards; it represents a concrete
+%% topic name to match against stored patterns.
+%%
+%% Example:
+%% ```
+%% %% After inserting <<"sensors/+/#">> and <<"sensors/room1/temperature">>
+%% Matches = match_trie:match(Trie, <<"sensors/room1/temperature">>).
+%% %% Returns: [<<"sensors/+/#">>, <<"sensors/room1/temperature">>]
+%% '''
+-spec match(Trie, Topic) -> [topic()] when
+  Trie :: trie(),
+  Topic :: topic().
 match(T, Topic) when is_binary(Topic) ->
   TrieNodes = match_node(root, words(Topic), T),
   [Name || #trie_node{topic=Name} <- TrieNodes, Name =/= undefined].
 
 
-%% @doc delete the entire trie.
--spec delete(trie()) -> ok.
+%% @doc Delete the entire trie and free its resources.
+%%
+%% This destroys the ETS tables backing the trie. The trie reference
+%% becomes invalid after this call.
+%%
+%% Example:
+%% ```
+%% ok = match_trie:delete(Trie).
+%% '''
+-spec delete(Trie) -> ok when
+  Trie :: trie().
 delete(#trie_tree{ntab=NT, ttab=TT}) ->
   true = ets:delete(NT),
   true = ets:delete(TT),
   ok.
 
-%% @doc delete a topic from the trie
--spec delete(trie(), binary()) -> ok.
+%% @doc Remove a topic pattern from the trie.
+%%
+%% If the topic does not exist in the trie, this is a no-op.
+%%
+%% Example:
+%% ```
+%% ok = match_trie:delete(Trie, <<"sensors/+/temperature">>).
+%% '''
+-spec delete(Trie, Topic) -> ok when
+  Trie :: trie(),
+  Topic :: topic().
 delete(T, Topic) when is_binary(Topic) ->
   NT = T#trie_tree.ntab,
   case ets:lookup(NT, Topic) of
@@ -97,13 +225,34 @@ delete(T, Topic) when is_binary(Topic) ->
       ok
   end.
 
-%% @doc lookup a trie node.
--spec lookup(trie(), binary()) -> [#trie_node{}].
+%% @doc Look up a trie node by its ID.
+%%
+%% This is a low-level function that returns the internal trie node record.
+%% Most users should use {@link match/2} instead.
+-spec lookup(Trie, NodeId) -> [#trie_node{}] when
+  Trie :: trie(),
+  NodeId :: binary().
 lookup(T, NodeId) ->
   ets:lookup(T#trie_tree.ntab, NodeId).
 
-%% @doc Validate Topic
--spec(validate({name | filter, topic()}) -> boolean()).
+%% @doc Validate a topic name or filter.
+%%
+%% Checks if a topic is well-formed according to MQTT-style rules.
+%% Topics must not be empty, must not exceed 4096 bytes, the `#' wildcard
+%% must only appear at the end, wildcards must occupy entire segments
+%% (not embedded like "a+b"), and no null characters are allowed.
+%%
+%% Use `{filter, Topic}' to validate subscription filters (wildcards allowed).
+%% Use `{name, Topic}' to validate topic names (no wildcards allowed).
+%%
+%% Example:
+%% ```
+%% true = match_trie:validate({filter, <<"sensors/+/temperature">>}),
+%% true = match_trie:validate({name, <<"sensors/room1/temperature">>}),
+%% false = match_trie:validate({name, <<"sensors/+/temperature">>}).
+%% '''
+-spec validate({name | filter, Topic}) -> boolean() when
+  Topic :: topic().
 validate({_, <<>>}) ->
   false;
 validate({_, Topic}) when is_binary(Topic) and (size(Topic) > ?MAX_TOPIC_LEN) ->
@@ -138,8 +287,18 @@ validate3(<<_/utf8, Rest/binary>>) ->
   validate3(Rest).
 
 
-%% @doc Is wildcard topic?
--spec(is_wildcard(topic() | words()) -> true | false).
+%% @doc Check if a topic contains wildcards.
+%%
+%% Returns `true' if the topic contains `+' or `#' wildcards.
+%%
+%% Example:
+%% ```
+%% true = match_trie:is_wildcard(<<"sensors/+/temperature">>),
+%% true = match_trie:is_wildcard(<<"sensors/#">>),
+%% false = match_trie:is_wildcard(<<"sensors/room1/temperature">>).
+%% '''
+-spec is_wildcard(Topic) -> boolean() when
+  Topic :: topic() | words().
 is_wildcard(Topic) when is_binary(Topic) ->
   is_wildcard(words(Topic));
 is_wildcard([]) ->
@@ -151,10 +310,25 @@ is_wildcard(['+'|_]) ->
 is_wildcard([_H|T]) ->
   is_wildcard(T).
 
-%% @doc Match Topic name with filter
--spec(is_match(Name, Filter) -> boolean() when
-  Name    :: topic() | words(),
-  Filter  :: topic() | words()).
+%% @doc Check if a topic name matches a filter pattern.
+%%
+%% Tests whether `Name' would be matched by the filter `Filter'.
+%% Unlike {@link match/2}, this does not require a trie and works
+%% directly on two topics.
+%%
+%% System topics (starting with `$') are not matched by `+' or `#'
+%% wildcards at the root level.
+%%
+%% Example:
+%% ```
+%% true = match_trie:is_match(<<"sensors/room1/temp">>, <<"sensors/+/temp">>),
+%% true = match_trie:is_match(<<"sensors/room1/temp">>, <<"sensors/#">>),
+%% false = match_trie:is_match(<<"$SYS/broker">>, <<"#">>),
+%% true = match_trie:is_match(<<"$SYS/broker">>, <<"$SYS/#">>).
+%% '''
+-spec is_match(Name, Filter) -> boolean() when
+  Name :: topic() | words(),
+  Filter :: topic() | words().
 is_match(Name, Filter) when is_binary(Name) and is_binary(Filter) ->
   is_match(words(Name), words(Filter));
 is_match([], []) ->
