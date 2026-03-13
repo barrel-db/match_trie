@@ -20,7 +20,7 @@ Add `match_trie` to your `rebar.config` dependencies:
 
 ```erlang
 {deps, [
-    {match_trie, "0.1.0"}
+    {match_trie, "1.0.0"}
 ]}.
 ```
 
